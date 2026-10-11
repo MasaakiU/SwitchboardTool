@@ -1,0 +1,24 @@
+{
+  "gestures": {
+    "two_finger_tap": "right_click",
+    "three_finger_tap": "middle_click"
+  },
+  "hot_corners": {
+    "top_left": { "open_app": "Finder", "dwell_ms": 300 },
+    "bottom_right": { "open_app": "/Applications/LaunchNext.app" }
+  },
+  "keys": {
+    "ctrl+alt+return": "return",
+    "ctrl+alt+space": "left_click",
+    "ctrl+alt+left": "space_left",
+    "ctrl+alt+right": "space_right",
+    "f13": "mission_control",
+    "fn+f14": { "key": "cmd+shift+4" }
+  },
+  "tuning": {
+    "tap_max_ms": 200,
+    "tap_max_move": 0.03,
+    "corner_dwell_ms": 200,
+    "corner_tolerance_px": 2
+  }
+}
