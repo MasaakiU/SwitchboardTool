@@ -5,10 +5,14 @@ struct Tuning {
     var tapMaxMove: Float = 0.03
     var cornerDwell: Double = 0.20
     var cornerTolerance: CGFloat = 2
+    var swipeMinDistance: Float = 0.20
+    var swipeMaxDuration: Double = 0.6
+    var edgeBand: Float = 0.08
 }
 
+/// What the agent runs with: triggers resolved to actions.
 struct Config {
-    var gestures: [Int: Action] = [:]            // finger count → action (tap)
+    var gestures: [TrackpadGesture: Action] = [:]
     var corners: [Corner: CornerBinding] = [:]
     var keys: [KeyTrigger: Action] = [:]
     var tuning = Tuning()
@@ -36,6 +40,15 @@ final class ConfigStore {
         }
     }
 
+    func readText() -> String? {
+        try? String(contentsOf: url, encoding: .utf8)
+    }
+
+    func save(text: String) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     func load() -> (Config, [String]) {
         guard let data = try? Data(contentsOf: url) else { return (Config(), ["The config file could not be read: \(url.path)"]) }
         return ConfigParser.parse(data)
@@ -55,15 +68,15 @@ enum ConfigParser {
       "tuning": {
         "tap_max_ms": 200,
         "tap_max_move": 0.03,
-        "corner_dwell_ms": 200
+        "swipe_min_distance": 0.2,
+        "swipe_max_ms": 600,
+        "edge_band": 0.08,
+        "corner_dwell_ms": 200,
+        "corner_tolerance_px": 2
       }
     }
 
     """
-
-    static let gestureNames: [String: Int] = [
-        "two_finger_tap": 2, "three_finger_tap": 3, "four_finger_tap": 4, "five_finger_tap": 5,
-    ]
 
     static func parse(_ data: Data) -> (Config, [String]) {
         var errors: [String] = []
@@ -87,6 +100,9 @@ enum ConfigParser {
                 case "tap_max_move": config.tuning.tapMaxMove = Float(number)
                 case "corner_dwell_ms": config.tuning.cornerDwell = number / 1000
                 case "corner_tolerance_px": config.tuning.cornerTolerance = CGFloat(number)
+                case "swipe_min_distance": config.tuning.swipeMinDistance = Float(number)
+                case "swipe_max_ms": config.tuning.swipeMaxDuration = number / 1000
+                case "edge_band": config.tuning.edgeBand = Float(number)
                 default: errors.append("tuning: unknown key \(key)")
                 }
             }
@@ -94,8 +110,8 @@ enum ConfigParser {
 
         if let gestures = root["gestures"] as? [String: Any] {
             for (name, value) in gestures {
-                guard let fingers = gestureNames[name] else { errors.append("gestures: unknown gesture \(name)"); continue }
-                if let action = parseAction(value, at: "gestures.\(name)", errors: &errors) { config.gestures[fingers] = action }
+                guard let gesture = TrackpadGesture(name: name) else { errors.append("gestures: unknown gesture \(name)"); continue }
+                if let action = parseAction(value, at: "gestures.\(name)", errors: &errors) { config.gestures[gesture] = action }
             }
         }
 
@@ -127,22 +143,13 @@ enum ConfigParser {
 
     static func parseAction(_ raw: Any, at path: String, errors: inout [String]) -> Action? {
         if let name = raw as? String {
-            switch name {
-            case "right_click": return .rightClick
-            case "left_click": return .leftClick
-            case "middle_click": return .middleClick
-            case "space_left", "desktop_left": return .key(code: 123, flags: .maskControl)
-            case "space_right", "desktop_right": return .key(code: 124, flags: .maskControl)
-            case "mission_control": return .key(code: 160, flags: [])
-            case "apps": return .key(code: 131, flags: [])
-            case "show_desktop": return .key(code: 103, flags: [])
-            default:
-                if let combo = KeyCodes.parseCombo(name) { return .key(code: combo.code, flags: combo.flags) }
-                errors.append("\(path): unknown action \"\(name)\"")
-                return nil
-            }
+            if let named = NamedAction.fromName(name) { return named.action }
+            if let combo = KeyCodes.parseCombo(name) { return .key(code: combo.code, flags: combo.flags) }
+            errors.append("\(path): unknown action \"\(name)\"")
+            return nil
         }
         if let dict = raw as? [String: Any] {
+            if let name = dict["action"] as? String { return parseAction(name, at: path, errors: &errors) }
             if let app = dict["open_app"] as? String { return .openApp(app) }
             if let combo = dict["key"] as? String {
                 if let parsed = KeyCodes.parseCombo(combo) { return .key(code: parsed.code, flags: parsed.flags) }

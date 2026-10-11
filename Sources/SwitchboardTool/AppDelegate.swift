@@ -4,11 +4,13 @@ import ServiceManagement
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private let store = ConfigStore()
+    private lazy var document = ConfigDocument(store: store)
+    private let settings = SettingsWindowController()
     private var config = Config()
     private var configErrors: [String] = []
 
     private let multitouch = MultitouchEngine.shared
-    private let tapDetector = TapDetector()
+    private let recognizer = GestureRecognizer()
     private let corners = HotCornerWatcher()
     private let keyTap = KeyBindingTap()
     private var mouseMonitor: Any?
@@ -16,6 +18,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var trusted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if CommandLine.arguments.contains("--print-config") {
+            // Debugging aid: show how the settings window would write the current file, then quit.
+            print(document.jsonText())
+            exit(0)
+        }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         store.ensureExists()
         reload(interactive: false)
@@ -25,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyConfig()
         trustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.pollTrust() }
         logger.info("started; accessibility trusted=\(self.trusted)")
+        if CommandLine.arguments.contains("--open-settings") { openSettings() }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -36,18 +44,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Wiring
 
     private func wire() {
-        multitouch.onFrame = { [weak self] points, timestamp in self?.tapDetector.frame(points, timestamp: timestamp) }
-        tapDetector.onTap = { [weak self] fingers in
-            guard let self, let action = self.config.gestures[fingers] else { return }
-            logger.info("tap fingers=\(fingers) -> \(action.label, privacy: .public)")
-            self.perform(action)
-        }
+        multitouch.onFrame = { [weak self] points, timestamp in self?.recognizer.frame(points, timestamp: timestamp) }
+        recognizer.onGesture = { [weak self] gesture in self?.handle(gesture) }
         corners.onTrigger = { [weak self] _, action in self?.perform(action) }
         keyTap.onAction = { [weak self] action in self?.perform(action) }
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             if let cgEvent = event.cgEvent, Synth.isOurs(cgEvent) { return }
-            self?.tapDetector.physicalClick()
+            self?.recognizer.physicalClick()
         }
+        document.onSaved = { [weak self] in
+            guard let self else { return }
+            self.reload(interactive: false)
+            self.applyConfig()
+        }
+        settings.onVisibilityChange = { [weak self] _ in self?.applyConfig() }
+    }
+
+    /// An edge swipe without its own binding counts as the plain swipe in that direction.
+    private func handle(_ gesture: TrackpadGesture) {
+        var action = config.gestures[gesture]
+        if action == nil, case .edgeSwipe(let fingers, let edge) = gesture {
+            action = config.gestures[.swipe(fingers: fingers, direction: edge.swipeDirection)]
+        }
+        guard let action else { return }
+        logger.info("gesture \(gesture.name, privacy: .public) -> \(action.label, privacy: .public)")
+        perform(action)
     }
 
     private func perform(_ action: Action) {
@@ -63,8 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyConfig() {
-        tapDetector.maxDuration = config.tuning.tapMaxDuration
-        tapDetector.maxMove = config.tuning.tapMaxMove
+        recognizer.tapMaxDuration = config.tuning.tapMaxDuration
+        recognizer.tapMaxMove = config.tuning.tapMaxMove
+        recognizer.swipeMinDistance = config.tuning.swipeMinDistance
+        recognizer.swipeMaxDuration = config.tuning.swipeMaxDuration
+        recognizer.edgeBand = config.tuning.edgeBand
         if config.gestures.isEmpty { multitouch.stop() } else { _ = multitouch.start() }
 
         corners.bindings = config.corners
@@ -73,7 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if config.corners.isEmpty { corners.stop() } else { corners.start() }
 
         keyTap.bindings = config.keys
-        if config.keys.isEmpty {
+        // Paused while the settings window is open, so a combination can be recorded or typed.
+        if config.keys.isEmpty || settings.isVisible {
             keyTap.stop()
         } else if trusted {
             _ = keyTap.start()
@@ -120,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         addInfo(menu, summaryLine())
         menu.addItem(.separator())
+        add(menu, "Settings…", #selector(openSettings))
         add(menu, "Open Config File", #selector(openConfig))
         add(menu, "Reload Config", #selector(reloadConfig))
         if !configErrors.isEmpty {
@@ -135,12 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func summaryLine() -> String {
-        let gestures = config.gestures.keys.sorted().map { "\($0)-finger tap" }.joined(separator: ", ")
-        var parts: [String] = []
-        parts.append(gestures.isEmpty ? "no gestures" : gestures)
-        parts.append("corners: \(config.corners.count)")
-        parts.append("keys: \(config.keys.count)")
-        return parts.joined(separator: " / ")
+        "gestures: \(config.gestures.count) / corners: \(config.corners.count) / keys: \(config.keys.count)"
     }
 
     @discardableResult
@@ -155,6 +176,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         menu.addItem(item)
+    }
+
+    @objc private func openSettings() {
+        document.reload()   // pick up edits made by hand since the last save
+        settings.show(document: document)
     }
 
     @objc private func openAccessibilitySettings() {

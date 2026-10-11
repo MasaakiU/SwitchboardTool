@@ -25,7 +25,7 @@ The project folder is still called `BTT_Alternative`.
 - `Package.swift` — one package, three targets.
   - `Sources/CMultitouch` — entry point to Apple's private MultitouchSupport framework (C), loaded with dlopen at runtime.
   - `Sources/TouchProbe` — test tool: `touch` (log finger data), `click` (right click after 3 s), `tap2click` (two-finger tap → right click).
-  - `Sources/SwitchboardTool` — the Agent.
+  - `Sources/SwitchboardTool` — the Agent, including the settings window (SwiftUI).
 - `make_app.sh` — builds both and assembles `build/TouchProbe.app` and `build/SwitchboardTool.app`.
 - `config.example.json` — a config that shows every feature.
 
@@ -33,31 +33,45 @@ The project folder is still called `BTT_Alternative`.
 
 - A hand icon appears in the menu bar; a warning triangle while the permission is missing.
 - The first launch asks for Accessibility. Once granted, the icon changes within 2 seconds.
+- **Settings…** in the menu opens a window that edits everything below: trackpad gestures, hot corners,
+  key bindings (type the combination or press Record and hit the keys) and tuning. Changes are saved to
+  the config file and applied right away. Key bindings pause while the window is open.
 - Config: `~/Library/Application Support/Switchboard Tool/config.json` (written with defaults on first launch).
-  Edit it by hand, then choose "Reload Config" from the menu. Unreadable parts are listed in the menu with a count.
+  It can also be edited by hand; "Reload Config" in the menu applies it. Unreadable parts are listed in the menu with a count.
 - Logs: `/usr/bin/log stream --predicate 'subsystem == "io.github.masaakiu.switchboardtool"' --level info`
 
 ### Config format
 
 ```json
 {
-  "gestures":    { "two_finger_tap": "right_click" },
+  "gestures":    { "two_finger_tap": "right_click", "three_finger_swipe_left": "space_left",
+                   "two_finger_swipe_down_from_top": "mission_control" },
   "hot_corners": { "bottom_right": { "open_app": "LaunchNext", "dwell_ms": 200 } },
   "keys":        { "ctrl+alt+return": "return", "ctrl+alt+right": "space_right" },
-  "tuning":      { "tap_max_ms": 200, "tap_max_move": 0.03, "corner_dwell_ms": 200, "corner_tolerance_px": 2 }
+  "tuning":      { "tap_max_ms": 200, "tap_max_move": 0.03, "swipe_min_distance": 0.2, "swipe_max_ms": 600,
+                   "edge_band": 0.08, "corner_dwell_ms": 200, "corner_tolerance_px": 2 }
 }
 ```
+
+Gestures: `<fingers>_finger_tap`, `<fingers>_finger_swipe_<direction>` and
+`<fingers>_finger_swipe_<direction>_from_<edge>` with fingers `two`…`five`, directions `left right up down`,
+edges `top bottom left right` (an edge swipe starts inside the band along that edge and moves away from it;
+without its own binding it counts as the plain swipe). Plain two-finger swipes are scrolling and are not offered.
+Swipes with three or more fingers are also seen by macOS: turn the matching system gesture off in
+System Settings › Trackpad, or both will fire.
 
 | Action | Meaning |
 |---|---|
 | `right_click` / `left_click` / `middle_click` | click at the cursor position |
 | `return`, `escape`, `ctrl+right`, any key combination | send that key |
 | `space_left` / `space_right` | switch desktop (sends Ctrl+←/→) |
-| `mission_control` / `apps` / `show_desktop` | Mission Control / Tahoe's Apps view / Show Desktop |
+| `mission_control` / `app_expose` / `apps` / `show_desktop` | Mission Control / App Exposé / Tahoe's Apps view / Show Desktop |
+| `lock_screen` / `screenshot_area` | Ctrl+Cmd+Q / Cmd+Shift+4 |
+| `volume_up` / `volume_down` / `mute` / `play_pause` / `next_track` / `previous_track` / `brightness_up` / `brightness_down` | media keys |
 | `{ "open_app": "name, bundle id or path" }` | open an app |
 | `{ "key": "cmd+shift+4" }` | send a key combination |
 
-Gestures: `two_finger_tap` … `five_finger_tap`. Corners: `top_left`, `top_right`, `bottom_left`, `bottom_right`.
+Corners: `top_left`, `top_right`, `bottom_left`, `bottom_right`.
 Key names: see `Sources/SwitchboardTool/KeyCodes.swift` (`a`–`z`, `f1`–`f20`, `left`, `eisu`, `kana`, …).
 Modifiers: `cmd`, `ctrl`, `alt`, `shift`, `fn`. `fn` is only compared when the trigger mentions it.
 
@@ -76,3 +90,4 @@ Modifiers: `cmd`, `ctrl`, `alt`, `shift`, `fn`. `fn` is only compared when the t
 ## License
 
 MIT. See [LICENSE](LICENSE).
+- 2026-10-11 Added swipes and edge swipes to the gesture engine, media-key and system actions, and the settings window.

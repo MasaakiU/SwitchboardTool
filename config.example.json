@@ -1,7 +1,11 @@
 {
   "gestures": {
     "two_finger_tap": "right_click",
-    "three_finger_tap": "middle_click"
+    "three_finger_tap": "middle_click",
+    "three_finger_swipe_left": "space_left",
+    "three_finger_swipe_right": "space_right",
+    "three_finger_swipe_up": "mission_control",
+    "two_finger_swipe_down_from_top": "app_expose"
   },
   "hot_corners": {
     "top_left": { "open_app": "Finder", "dwell_ms": 300 },
@@ -13,11 +17,15 @@
     "ctrl+alt+left": "space_left",
     "ctrl+alt+right": "space_right",
     "f13": "mission_control",
-    "fn+f14": { "key": "cmd+shift+4" }
+    "fn+f14": { "key": "cmd+shift+4" },
+    "ctrl+alt+m": "mute"
   },
   "tuning": {
     "tap_max_ms": 200,
     "tap_max_move": 0.03,
+    "swipe_min_distance": 0.2,
+    "swipe_max_ms": 600,
+    "edge_band": 0.08,
     "corner_dwell_ms": 200,
     "corner_tolerance_px": 2
   }
