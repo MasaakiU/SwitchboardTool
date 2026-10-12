@@ -26,7 +26,7 @@ final class MultitouchEngine {
             mt_start(device)
             devices.append(device)
         }
-        logger.info("multitouch devices started: \(self.devices.count)")
+        logger.notice("multitouch devices started: \(self.devices.count)")
         return isRunning
     }
 
@@ -34,6 +34,13 @@ final class MultitouchEngine {
         for device in devices { mt_stop(device); mt_unregister(device, multitouchTrampoline) }
         devices.removeAll()
         deviceList = nil
+    }
+
+    /// After sleep or a display change the device objects can go quiet without any error; enumerate them again.
+    func restart() {
+        let wasRunning = isRunning
+        stop()
+        if wasRunning { _ = start() }
     }
 
     fileprivate func receive(_ touches: UnsafeBufferPointer<MTTouch>, timestamp: Double) {

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mouseMonitor: Any?
     private var trustTimer: Timer?
     private var trusted = false
+    private var activity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if CommandLine.arguments.contains("--print-config") {
@@ -31,8 +32,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         wire()
         applyConfig()
         trustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.pollTrust() }
-        logger.info("started; accessibility trusted=\(self.trusted)")
+        // Without this, App Nap may slow the timers of a background app that shows no window.
+        activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep], reason: "Listening to the trackpad")
+        observeWake()
+        logger.notice("started; accessibility trusted=\(self.trusted)")
         if CommandLine.arguments.contains("--open-settings") { openSettings() }
+    }
+
+    /// The multitouch callbacks can stop silently after sleep; start them again once the Mac is awake.
+    private func observeWake() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                logger.notice("\(note.name.rawValue, privacy: .public): restarting the trackpad listener")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.multitouch.restart() }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -67,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action = config.gestures[.swipe(fingers: fingers, direction: edge.swipeDirection)]
         }
         guard let action else { return }
-        logger.info("gesture \(gesture.name, privacy: .public) -> \(action.label, privacy: .public)")
+        logger.notice("gesture \(gesture.name, privacy: .public) -> \(action.label, privacy: .public)")
         perform(action)
     }
 
@@ -118,7 +133,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = AXIsProcessTrusted()
         guard now != trusted else { return }
         trusted = now
-        logger.info("accessibility trusted changed: \(now)")
+        logger.notice("accessibility trusted changed: \(now)")
         applyConfig()
     }
 
