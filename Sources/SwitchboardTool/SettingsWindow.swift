@@ -13,12 +13,10 @@ extension Corner {
     }
 }
 
-/// Owns the settings window. Reports when it is shown or closed so key bindings can pause meanwhile.
+/// Owns the settings window. Reports when it is shown or about to close so key bindings can pause meanwhile.
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     var onVisibilityChange: ((Bool) -> Void)?
-
-    var isVisible: Bool { window?.isVisible ?? false }
 
     func show(document: ConfigDocument) {
         if window == nil {

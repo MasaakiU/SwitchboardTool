@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mouseMonitor: Any?
     private var trustTimer: Timer?
     private var trusted = false
+    private var settingsVisible = false
     private var activity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -72,7 +73,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.reload(interactive: false)
             self.applyConfig()
         }
-        settings.onVisibilityChange = { [weak self] _ in self?.applyConfig() }
+        // The closing report arrives from windowWillClose, while the window still counts as visible, so the
+        // window cannot be asked; the reported value is the state it is about to have.
+        settings.onVisibilityChange = { [weak self] visible in
+            self?.settingsVisible = visible
+            self?.applyConfig()
+        }
     }
 
     /// An edge swipe without its own binding counts as the plain swipe in that direction.
@@ -113,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         keyTap.bindings = config.keys
         // Paused while the settings window is open, so a combination can be recorded or typed.
-        if config.keys.isEmpty || settings.isVisible {
+        if config.keys.isEmpty || settingsVisible {
             keyTap.stop()
         } else if trusted {
             _ = keyTap.start()

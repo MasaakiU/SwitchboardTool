@@ -11,6 +11,13 @@ struct KeyTrigger: Hashable {
         self.caresAboutFn = caresAboutFn
         modifiers = flags.intersection(KeyBindingTap.relevantMask(caresAboutFn: caresAboutFn)).rawValue
     }
+
+    /// The combination as written in config.json, e.g. "ctrl+alt+right".
+    var name: String {
+        let flags = CGEventFlags(rawValue: modifiers)
+        let text = KeyCodes.comboText(keyCode: keyCode, flags: flags) ?? "key \(keyCode)"
+        return caresAboutFn && flags.contains(.maskSecondaryFn) ? "fn+" + text : text
+    }
 }
 
 /// Intercepts key events; a registered combination is swallowed and performs its action. Needs the Accessibility permission.
@@ -43,12 +50,17 @@ final class KeyBindingTap {
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         self.source = source
-        logger.info("keyboard event tap started")
+        logger.notice("keyboard event tap started")
         return true
     }
 
     func stop() {
-        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            // Dropping the port alone leaves the tap registered (disabled) with the window server.
+            CFMachPortInvalidate(tap)
+            logger.notice("keyboard event tap stopped")
+        }
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
         source = nil
@@ -57,6 +69,8 @@ final class KeyBindingTap {
 
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            let why = type == .tapDisabledByTimeout ? "timeout" : "user input"
+            logger.notice("keyboard event tap was disabled by \(why, privacy: .public); enabling it again")
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
@@ -70,6 +84,7 @@ final class KeyBindingTap {
             guard event.flags.intersection(mask).rawValue == trigger.modifiers else { continue }
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             swallowedKeyUps.insert(keyCode)
+            if !isRepeat { logger.notice("key \(trigger.name, privacy: .public) -> \(action.label, privacy: .public)") }
             if !isRepeat || action.repeatsWhileHeld {
                 DispatchQueue.main.async { [action] in self.onAction?(action) }
             }

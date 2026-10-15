@@ -86,6 +86,9 @@ Modifiers: `cmd`, `ctrl`, `alt`, `shift`, `fn`. `fn` is only compared when the t
 - 2026-10-10 Agent (then called BTT Alternative): the user confirmed the two-finger tap opens the right-click menu right after granting Accessibility.
   LaunchNext opens and closes from the bottom-right corner through its own setting. Key bindings not yet exercised at that point.
 - 2026-10-10 Renamed to Switchboard Tool; bundle id io.github.masaakiu.switchboardtool.
+- 2026-10-15 Key bindings were dead although the settings window was closed; `CGGetEventTapList` showed the tap registered but
+  disabled. Cause: the closing report comes from windowWillClose, while the window still reports visible, so the tap was never
+  restarted; stop() also left the port registered. Both fixed; the tap's starts, stops and firings now log at notice level.
 
 ## License
 
